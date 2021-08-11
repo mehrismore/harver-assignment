@@ -1,8 +1,11 @@
 const fs = require("fs");
+const util = require("util");
 const path = require("path");
 const axios = require("axios");
 const blend = require("@mapbox/blend");
 const argv = require("minimist")(process.argv.slice(2));
+
+// add final image destination to global variables
 const {
   greeting = "Hello",
   who = "You",
@@ -10,8 +13,10 @@ const {
   height = 500,
   color = "Pink",
   size = 100,
+  destination = path.join(process.cwd(), `/cat-card.jpg`),
 } = argv;
 
+// separating the request in a new function
 const sendCatRequest = (text, width, height, color, size) => {
   return axios.request({
     method: "GET",
@@ -21,8 +26,12 @@ const sendCatRequest = (text, width, height, color, size) => {
   });
 };
 
-const blendImages = (image1, image2) => {
-  blend(
+// promisify blend
+const promisedBlend = util.promisify(blend);
+
+// separate blending two images in a promise-based function using async/await
+const blendImages = async (image1, image2, destination) => {
+  const data = await promisedBlend(
     [
       { buffer: image1.data, x: 0, y: 0 },
       { buffer: image2.data, x: width, y: 0 },
@@ -31,33 +40,34 @@ const blendImages = (image1, image2) => {
       width: width * 2,
       height: height,
       format: "jpeg",
-    },
-    (err, data) => {
-      const fileOut = path.join(process.cwd(), `/cat-card.jpg`);
-      fs.writeFile(fileOut, data, "binary", (err) => {
-        if (err) {
-          console.log(err);
-          return;
-        }
-        console.log("The file was saved!");
-      });
     }
   );
-}
 
-const sendGetRequest = async () => {
+  fs.promises.writeFile(destination, data, "binary");
+  console.log("The file was saved!");
+};
+
+// send two cat async requests in parallel
+const blendTwoCats = async ({
+  greeting,
+  who,
+  width,
+  height,
+  color,
+  size,
+  destination,
+}) => {
   try {
-    const req1 = sendCatRequest(greeting, width, height, color, size);
-    const req2 = sendCatRequest(who, width, height, color, size);
-
-    const resp1 = await req1;
+    let [resp1, resp2] = await Promise.all([
+      sendCatRequest(greeting, width, height, color, size),
+      sendCatRequest(who, width, height, color, size),
+    ]);
     console.log(`Received response with status: ${resp1.status}`);
-    const resp2 = await req2;
     console.log(`Received response with status: ${resp2.status}`);
-    blendImages(resp1, resp2)
+    await blendImages(resp1, resp2, destination);
   } catch (err) {
     console.error(err);
   }
 };
 
-sendGetRequest();
+blendTwoCats({ greeting, who, width, height, color, size, destination });
